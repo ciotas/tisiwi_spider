@@ -16,29 +16,29 @@ require dirname(__FILE__).'/../core/init.php';
 $configs = array(
     'name' => 'JD.com',
     'tasknum' => 1,
-    'save_running_state' => false,
-    //'log_show' => true,
+    'save_running_state' => false, //保存爬虫运行状态
+    'log_show' => false,
     'domains' => array(
         'list.jd.com',
         'item.jd.com',
     ),
-    'scan_urls' => array(
+    'scan_urls' => array( //入口链接
         "http://list.jd.com/list.html?cat=9847,9849,9870",
         //"http://list.jd.com/list.html?cat=1318,1463,12109", // JD http 和 https 都支持
     ),
-    'list_url_regexes' => array(
+    'list_url_regexes' => array(  //定义列表页url的规则
         "http://list.jd.com/list.html\?cat=\d+,\d+,\d+",
     ),
-    'content_url_regexes' => array(
+    'content_url_regexes' => array( //定义内容页url的规则
         "http://item.jd.com/\d+.html",
     ),
-    'export' => array(
+    'export' => array( //爬虫爬取数据导出
         'type' => 'db',
         'table' => 'jd_goods',
         //'type' => 'csv',
         //'file' => PATH_DATA.'/jd_goods.csv',
     ),
-    'fields' => array(
+    'fields' => array(  //定义内容页的抽取规则
         // 商品ID
         array(
             'name' => "goods_id",
@@ -121,11 +121,21 @@ $configs = array(
 );
 
 $spider = new phpspider($configs);
+/**
+ * @param $fieldname
+ * @param $data 当前field抽取到的数据
+ * @param $page 当前下载的网页页面的对象
+ *  @param $page['url'] 当前网页的URL
+ *  @param $page['raw'] 当前网页的内容
+ *  @param $page['request'] 当前网页的请求对象
+ * @return mixed|string
+ */
 $spider->on_extract_field = function($fieldname, $data, $page)
 {
     if($fieldname =='good_url')
     {
-        $data = $page['request']['url'];
+//        file_put_contents(PATH_DATA.'/1.txt',$page['request']['url'],FILE_APPEND);
+        $data = $page['request']['url'];  //当前爬取网页的url
     }
     elseif($fieldname =='goods_price')
     {
@@ -147,6 +157,8 @@ $spider->on_extract_field = function($fieldname, $data, $page)
     elseif($fieldname =='shop_url')
     {
         // 处理店铺URL
+//        file_put_contents(PATH_DATA.'/1.txt',$data,FILE_APPEND);
+
         $data = preg_replace('#^(https?:)?//#i','',$data);
         $parse_url = @parse_url($page['request']['url']);
         $data = $parse_url['scheme']."://".$data;
@@ -178,6 +190,7 @@ $spider->on_extract_field = function($fieldname, $data, $page)
             }
         }
     }
+
     return $data;
 };
 
@@ -200,5 +213,5 @@ CREATE TABLE `jd_goods` (
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '抓取时间',
   `update_user` bigint(20) NOT NULL DEFAULT '0' COMMENT '用户id',
   PRIMARY KEY (`goods_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='京东商品表'i
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='京东商品表'
 */

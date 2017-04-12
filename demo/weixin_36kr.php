@@ -23,16 +23,10 @@ $configs = array(
     'content_url_regexes' => array(
         "http://chuansong.me/n/\d+",
     ),
-    'max_try' => 5,
+    'max_try' => 1,
+
     'export' => array(
-        'type' => 'db', 
-        'conf' => array(
-            'host'  => 'localhost',
-            'port'  => 3306,
-            'user'  => 'root',
-            'pass'  => '',
-            'name'  => 'demo',
-        ),
+        'type' => 'db',
         'table' => '360ky',
     ),
 //    'export' => array(
@@ -67,8 +61,9 @@ $configs = array(
         ),
     ),
 );
+
 $spider = new phpspider($configs);
-$spider->on_handle_img = function($fieldname, $img) 
+$spider->on_handle_img = function($fieldname, $img)
 {
     $regex = '/src="(https?:\/\/.*?)"/i';
     preg_match($regex, $img, $rs);
@@ -84,8 +79,7 @@ $spider->on_handle_img = function($fieldname, $img)
 $spider->on_extract_field = function($fieldname, $data, $page) 
 {
 
-    
-    if ($fieldname == 'article_title') 
+    if ($fieldname == 'article_title')
     {
         if (strlen($data) > 10) 
         {

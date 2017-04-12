@@ -792,7 +792,7 @@ class phpspider
         {
             self::$use_redis = true;
 
-            if (!cls_redis::init()) 
+            if (!cls_redis::init())
             {
                 if (self::$multiserver) 
                 {
@@ -895,9 +895,9 @@ class phpspider
             call_user_func($this->on_start, $this);
         }
 
-        if (!self::$daemonize) 
+        if (!self::$daemonize)
         {
-            if (!log::$log_show) 
+            if (!log::$log_show)
             {
                 // 第一次先清屏
                 $this->clear_echo();
@@ -964,9 +964,9 @@ class phpspider
     public function do_collect_page() 
     {
         while( $queue_lsize = $this->queue_lsize() )
-        { 
+        {
             // 如果是主任务
-            if (self::$taskmaster) 
+            if (self::$taskmaster)
             {
                 // 多任务下主任务未准备就绪
                 if (self::$tasknum > 1 && !self::$fork_task_complete) 
@@ -1017,7 +1017,7 @@ class phpspider
 
             // 检查进程是否收到关闭信号
             $this->check_terminate();
-        } 
+        }
     }
 
     /**
@@ -1059,8 +1059,9 @@ class phpspider
         requests::$input_encoding = null;
         $html = $this->request_url($url, $link);
 
-        if (!$html) 
+        if (!$html)
         {
+            log::info("Get page html empty! maybe the page is untouched!");
             return false;
         }
         // 当前正在爬取的网页页面的对象
@@ -1085,8 +1086,8 @@ class phpspider
         // 处理回调函数
         //--------------------------------------------------------------------------------
 
-        // 判断当前网页是否被反爬虫了, 需要开发者实现 
-        if ($this->is_anti_spider) 
+        // 判断当前网页是否被反爬虫了, 需要开发者实现
+        if ($this->is_anti_spider)
         {
             $is_anti_spider = call_user_func($this->is_anti_spider, $url, $page['raw'], $this);
             // 如果在回调函数里面判断被反爬虫并且返回true
@@ -1098,7 +1099,7 @@ class phpspider
 
         // 在一个网页下载完成之后调用. 主要用来对下载的网页进行处理.
         // 比如下载了某个网页, 希望向网页的body中添加html标签
-        if ($this->on_download_page) 
+        if ($this->on_download_page)
         {
             $return = call_user_func($this->on_download_page, $page, $this);
             // 针对那些老是忘记return的人
@@ -1108,15 +1109,15 @@ class phpspider
         // 是否从当前页面分析提取URL
         // 回调函数如果返回false表示不需要再从此网页中发现待爬url
         $is_find_url = true;
-        if ($link['url_type'] == 'scan_page') 
+        if ($link['url_type'] == 'scan_page')
         {
-            if ($this->on_scan_page) 
+            if ($this->on_scan_page)
             {
                 $return = call_user_func($this->on_scan_page, $page, $page['raw'], $this);
                 if (isset($return)) $is_find_url = $return;
             }
         }
-        elseif ($link['url_type'] == 'list_page') 
+        elseif ($link['url_type'] == 'list_page')
         {
             if ($this->on_list_page) 
             {
@@ -1146,6 +1147,7 @@ class phpspider
 
         // 如果是内容页, 分析提取HTML页面中的字段
         // 列表页也可以提取数据的, source_type: urlcontext, 未实现
+        print_r($link['url_type']);echo "\r\n";
         if ($link['url_type'] == 'content_page') 
         {
             $this->get_html_fields($page['raw'], $url, $page);
@@ -1227,18 +1229,20 @@ class phpspider
         $method = empty($link['method']) ? 'get' : strtolower($link['method']);
         $params = empty($link['params']) ? array() : $link['params'];
         $html = requests::$method($url, $params);
-        // 此url附加的数据不为空, 比如内容页需要列表页一些数据, 拼接到后面去
+//        var_dump($html);//exit;
+//        此url附加的数据不为空, 比如内容页需要列表页一些数据, 拼接到后面去
         if ($html && !empty($link['context_data'])) 
         {
             $html .= $link['context_data'];
         }
 
         $http_code = requests::$status_code;
+//        echo $http_code;exit;
 
-        if ($this->on_status_code) 
+        if ($this->on_status_code)
         {
             $return = call_user_func($this->on_status_code, $http_code, $url, $html, $this);
-            if (isset($return)) 
+            if (isset($return))
             {
                 $html = $return;
             }
@@ -1348,7 +1352,7 @@ class phpspider
         //--------------------------------------------------------------------------------
         // 去除重复的RUL
         $urls = array_unique($urls);
-        foreach ($urls as $k=>$url) 
+        foreach ($urls as $k=>$url)
         {
             $url = trim($url);
             if (empty($url)) 
@@ -1375,7 +1379,7 @@ class phpspider
         //--------------------------------------------------------------------------------
         // 把抓取到的URL放入队列
         //--------------------------------------------------------------------------------
-        foreach ($urls as $url) 
+        foreach ($urls as $url)
         {
             if ($this->on_fetch_url) 
             {
@@ -1635,7 +1639,7 @@ class phpspider
     {
         $fields = $this->get_fields(self::$configs['fields'], $html, $url, $page);
 
-        if (!empty($fields)) 
+        if (!empty($fields))
         {
             if ($this->on_extract_page) 
             {
@@ -1654,7 +1658,7 @@ class phpspider
                 }
             }
 
-            if (isset($fields) && is_array($fields)) 
+            if (isset($fields) && is_array($fields))
             {
                 $fields_num = $this->incr_fields_num();
                 if (self::$configs['max_fields'] != 0 && $fields_num > self::$configs['max_fields']) 
@@ -1693,7 +1697,7 @@ class phpspider
                         $sql = db::insert(self::$export_table, $fields, true);
                         util::put_file(self::$export_file, $sql.";\n", FILE_APPEND);
                     }
-                    elseif (self::$export_type == 'db') 
+                    elseif (self::$export_type == 'db')
                     {
                         db::insert(self::$export_table, $fields);
                     }
@@ -1795,7 +1799,7 @@ class phpspider
                 }
             }
 
-            if (empty($values)) 
+            if (empty($values))
             {
                 // 如果值为空而且值设置为必须项, 跳出foreach循环
                 if ($required) 
@@ -1812,7 +1816,7 @@ class phpspider
             {
                 if (is_array($values)) 
                 {
-                    if ($repeated) 
+                    if ($repeated)
                     {
                         $fields[$conf['name']] = $values;
                     }
@@ -1826,11 +1830,11 @@ class phpspider
                     $fields[$conf['name']] = $values;
                 }
                 // 不重复抽取则只取第一个元素
-                //$fields[$conf['name']] = $repeated ? $values : $values[0];
+//                $fields[$conf['name']] = $repeated ? $values : $values[0];
             }
         }
 
-        if (!empty($fields)) 
+        if (!empty($fields))
         {
             foreach ($fields as $fieldname => $data) 
             {
@@ -1939,8 +1943,8 @@ class phpspider
             return false;
         }
 
-        //if (cls_redis::exists("collect_queue")) 
-        $keys = cls_redis::keys("*"); 
+        //if (cls_redis::exists("collect_queue"))
+        $keys = cls_redis::keys("*");
         $count = count($keys);
         if ($count != 0) 
         {
@@ -2360,7 +2364,7 @@ class phpspider
         }
         else 
         {
-            $link = array_shift(self::$collect_queue); 
+            $link = array_shift(self::$collect_queue);
         }
         return $link;
     }
@@ -2761,6 +2765,9 @@ class phpspider
         $display_str .= "\n";
         return $display_str;
     }
+
+    //
+
 
     /**
      * 判断是否附件文件

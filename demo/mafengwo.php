@@ -51,17 +51,25 @@ $configs = array(
 );
 
 $spider = new phpspider($configs);
-
+//print_r($spider);exit;
 $spider->on_start = function($phpspider) 
 {
     requests::set_header('Referer','http://www.mafengwo.cn/mdd/citylist/21536.html');
 };
-
-$spider->on_scan_page = function($page, $content, $phpspider) 
+/**
+ * @param $page 当前下载的网页页面的对象
+ * @param $content 当前网页内容
+ * @param $phpspider 当前爬虫对象
+ * @return 返回false表示不需要再从此网页中发现待爬url
+ * @param $page['url'] 当前网页的URL
+ * @param $page['raw'] 当前网页的内容
+ * @param $page['request'] 当前网页的请求对象
+ */
+$spider->on_scan_page = function($page, $content, $phpspider)
 {
-    //for ($i = 0; $i < 298; $i++) 
+    //for ($i = 0; $i < 298; $i++)
     //测试的时候先采集一个国家，要不然等的时间太长
-    for ($i = 0; $i < 1; $i++) 
+    for ($i = 0; $i < 1; $i++)
     {
         // 全国热点城市
         $url = "http://www.mafengwo.cn/mdd/base/list/pagedata_citylist?page={$i}";
@@ -72,21 +80,22 @@ $spider->on_scan_page = function($page, $content, $phpspider)
                 'page'=>$i,
             )
         );
-        $phpspider->add_url($url, $options);
+        $phpspider->add_url($url, $options); //往待爬队列中添加url
     }
 };
 
-$spider->on_list_page = function($page, $content, $phpspider) 
+$spider->on_list_page = function($page, $content, $phpspider)
 {
     // 如果是城市列表页
     if (preg_match("#pagedata_citylist#", $page['request']['url']))
     {
         $data = json_decode($content, true);
         $html = $data['list'];
+
         preg_match_all('#<a href="/travel-scenic-spot/mafengwo/(.*?).html"#', $html, $out);
-        if (!empty($out[1])) 
+        if (!empty($out[1]))
         {
-            foreach ($out[1] as $v) 
+            foreach ($out[1] as $v)
             {
                 $url = "http://www.mafengwo.cn/gonglve/ajax.php?act=get_travellist&mddid={$v}";
                 $options = array(
@@ -107,18 +116,19 @@ $spider->on_list_page = function($page, $content, $phpspider)
         }
     }
     // 如果是文章列表页
-    else 
+    else
     {
         $data = json_decode($content, true);
         $html = $data['list'];
+
         // 遇到第一页的时候，获取分页数，把其他分页全部入队列
         if ($page['request']['params']['page'] == 1)
         {
             $data_page = trim($data['page']);
-            if (!empty($data_page)) 
+            if (!empty($data_page))
             {
                 preg_match('#<span class="count">共<span>(.*?)</span>页#', $data_page, $out);
-                for ($i = 0; $i < $out[1]; $i++) 
+                for ($i = 0; $i < $out[1]; $i++)
                 {
                     $v = $page['request']['params']['mddid'];
                     $url = "http://www.mafengwo.cn/gonglve/ajax.php?act=get_travellist&mddid={$v}&page={$i}";
@@ -140,11 +150,12 @@ $spider->on_list_page = function($page, $content, $phpspider)
             }
         }
 
-        // 获取内容页
+//        file_put_contents(PATH_DATA.'/1.txt',$html_citylist,FILE_APPEND);
+        //获取内容页
         preg_match_all('#<a href="/i/(.*?).html" target="_blank">#', $html, $out);
-        if (!empty($out[1])) 
+        if (!empty($out[1]))
         {
-            foreach ($out[1] as $v) 
+            foreach ($out[1] as $v)
             {
                 $url = "http://www.mafengwo.cn/i/{$v}.html";
                 $phpspider->add_url($url);
@@ -153,10 +164,21 @@ $spider->on_list_page = function($page, $content, $phpspider)
 
     }
 };
-
-$spider->on_extract_field = function($fieldname, $data, $page) 
+$spider->is_anti_spider = function($url, $content, $phpspider)
 {
-    if ($fieldname == 'date') 
+    // $content中包含"404页面不存在"字符串
+    if (strpos($content, "404页面不存在") !== false)
+    {
+        // 如果使用了代理IP，IP切换需要时间，这里可以添加到队列等下次换了IP再抓取
+        // $phpspider->add_url($url);
+        return true; // 告诉框架网页被反爬虫了，不要继续处理它
+    }
+    // 当前页面没有被反爬虫，可以继续处理
+    return false;
+};
+$spider->on_extract_field = function($fieldname, $data, $page)
+{
+    if ($fieldname == 'date')
     {
         $data = trim(str_replace(array("出发时间","/"),"", strip_tags($data)));
     }

@@ -1,0 +1,10 @@
+# Created by .ignore support plugin (hsz.mobi)
+.gitignore
+.idea/
+"data\r\n"
+data/
+demo/dump.rdb
+demo/evervc.php
+demo/itjuzi.php
+demo/lieyunwang.php
+demo/weixin_36kr.sql

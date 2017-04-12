@@ -74,7 +74,11 @@ $configs = array(
 );
 
 $spider = new phpspider($configs);
-
+/**
+ * @param $fieldname
+ * @param $img 整个img标签的内容
+ * @return mixed
+ */
 $spider->on_handle_img = function($fieldname, $img) 
 {
     $regex = '/src="(https?:\/\/.*?)"/i';

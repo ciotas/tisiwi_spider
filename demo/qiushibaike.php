@@ -102,7 +102,15 @@ $spider->on_handle_img = function($fieldname, $img)
     //$img = str_replace($url, $filename, $img);
     return $img;
 };
-
+/**
+ * @param $fieldname
+ * @param $data 当前field抽取到的数据
+ * @param $page 当前下载的网页页面的对象
+ *  @param $page['url'] 当前网页的URL
+ *  @param $page['raw'] 当前网页的内容
+ *  @param $page['request'] 当前网页的请求对象
+ * @return mixed|string
+ */
 $spider->on_extract_field = function($fieldname, $data, $page) 
 {
     $encoding = util::get_encoding($page['raw']);
