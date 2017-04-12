@@ -657,7 +657,7 @@ class phpspider
         }
 
         // fork前一定要关闭redis
-        cls_redis::close();
+        cls_redis::clear_link();
 
         umask(0);
         $pid = pcntl_fork();
@@ -977,7 +977,7 @@ class phpspider
                         self::$fork_task_complete = true;
 
                         // fork 子进程前一定要先干掉redis连接fd, 不然会存在进程互抢redis fd 问题
-                        cls_redis::close();
+                        cls_redis::clear_link();
                         // task进程从2开始, 1被master进程所使用
                         for ($i = 2; $i <= self::$tasknum; $i++) 
                         {
@@ -1340,6 +1340,12 @@ class phpspider
         if (empty($urls)) 
         {
             return false;
+        }
+
+        // 如果页面上只有一个url，要把他转为数组，否则下面会报警告
+        if (!is_array($urls)) 
+        {
+            $urls = array($urls);
         }
 
         foreach ($urls as $key=>$url) 

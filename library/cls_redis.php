@@ -24,6 +24,8 @@ class cls_redis
      *  redis配置数组
      */
     protected static $configs = array();
+    private static $links = array();
+    private static $link_name = 'default';
     
     /**
      *  默认redis前缀
@@ -41,82 +43,79 @@ class cls_redis
         }
 
         // 获取配置
-        $configs = empty(self::$configs) ? self::_get_default_config() : self::$configs;
-        if (empty($configs)) 
-        {
-            self::$error = "You not set a config array for connect\nPlease check the configuration file config/inc_config.php";
-            return false;
-        }
+        $config = self::$link_name == 'default' ? self::_get_default_config() : self::$configs[self::$link_name];
 
         // 如果当前链接标识符为空，或者ping不同，就close之后重新打开
-        //if ( empty(self::$redis) || !self::ping() )
-        if ( !self::$redis )
+        //if ( empty(self::$links[self::$link_name]) || !self::ping() )
+        if (empty(self::$links[self::$link_name]))
         {
-            self::$redis = new Redis();
-            if (!self::$redis->connect($configs['host'], $configs['port'], $configs['timeout']))
+            self::$links[self::$link_name] = new Redis();
+            if (!self::$links[self::$link_name]->connect($config['host'], $config['port'], $config['timeout']))
             {
                 self::$error = "Unable to connect to redis server\nPlease check the configuration file config/inc_config.php";
-                self::$redis = null;
+                unset(self::$links[self::$link_name]);
                 return false;
             }
 
             // 验证
-            if ($configs['pass'])
+            if ($config['pass'])
             {
-                if ( !self::$redis->auth($configs['pass']) ) 
+                if ( !self::$links[self::$link_name]->auth($config['pass']) ) 
                 {
                     self::$error = "Redis Server authentication failed\nPlease check the configuration file config/inc_config.php";
-                    self::$redis = null;
+                    unset(self::$links[self::$link_name]);
                     return false;
                 }
             }
 
-            $prefix = empty($configs['prefix']) ? self::$prefix : $configs['prefix'];
-            self::$redis->setOption(Redis::OPT_PREFIX, $prefix . ":");
-            self::$redis->setOption(Redis::OPT_READ_TIMEOUT, -1);
+            $prefix = empty($config['prefix']) ? self::$prefix : $config['prefix'];
+            self::$links[self::$link_name]->setOption(Redis::OPT_PREFIX, $prefix . ":");
+            self::$links[self::$link_name]->setOption(Redis::OPT_READ_TIMEOUT, -1);
         }
 
-        return self::$redis;
+        return self::$links[self::$link_name];
     }
 
-    public static function close()
+    public static function clear_link()
     {
-        if ( !empty(self::$redis) )
+        if(self::$links) 
         {
-            self::$redis->close();
-            self::$redis = null;
-        }
-    }
-
-    public static function set_connect($config = array())
-    {
-        // 先断开原来的连接
-        if ( !empty(self::$redis) )
-        {
-            self::$redis->close();
-            self::$redis = null;
-        }
-
-        if (!empty($config))
-        {
-            self::$configs = $config;
-        }
-        else
-        {
-            if (empty(self::$configs))
+            foreach(self::$links as $k=>$v)
             {
-                throw new Exception("You not set a config array for connect!");
+                $v->close();
+                unset(self::$links[$k]);
             }
         }
     }
 
-    public static function set_connect_default($config = '')
+    public static function set_connect($link_name, $config = array())
     {
-        if (empty($config))
+        self::$link_name = $link_name;
+        if (!empty($config))
         {
-            $config = self::_get_default_config();
+            self::$configs[self::$link_name] = $config;
         }
-        self::set_connect($config);
+        else
+        {
+            if (empty(self::$configs[self::$link_name]))
+            {
+                throw new Exception("You not set a config array for connect!");
+            }
+        }
+        //print_r(self::$configs);
+
+        //// 先断开原来的连接
+        //if ( !empty(self::$links[self::$link_name]) )
+        //{
+            //self::$links[self::$link_name]->close();
+            //self::$links[self::$link_name] = null;
+        //}
+    }
+
+    public static function set_connect_default()
+    {
+        $config = self::_get_default_config();
+        self::set_connect('default', $config);
     }
 
     /**
@@ -124,12 +123,16 @@ class cls_redis
     */
     protected static function _get_default_config()
     {
-        if (empty($GLOBALS['config']['redis']))
+        if (empty(self::$configs['default']))
         {
-            return array();
+            if (!is_array($GLOBALS['config']['redis']))
+            {
+                exit('cls_redis.php _get_default_config()' . '没有redis配置');
+                // You not set a config array for connect\nPlease check the configuration file config/inc_config.php
+            }
+            self::$configs['default'] = $GLOBALS['config']['redis'];
         }
-        self::$configs = $GLOBALS['config']['redis'];
-        return self::$configs;
+        return self::$configs['default'];
     }
 
     /**
@@ -147,15 +150,15 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
                 if ($expire > 0)
                 {
-                    return self::$redis->setex($key, $expire, $value);
+                    return self::$links[self::$link_name]->setex($key, $expire, $value);
                 }
                 else
                 {
-                    return self::$redis->set($key, $value);
+                    return self::$links[self::$link_name]->set($key, $value);
                 }
             }
         }
@@ -165,8 +168,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::set($key, $value, $expire);
             }
@@ -190,20 +193,20 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
                 if ($expire > 0)
                 {
-                    return self::$redis->set($key, $value, array('nx', 'ex' => $expire));
-                    //self::$redis->multi();
-                    //self::$redis->setNX($key, $value);
-                    //self::$redis->expire($key, $expire);
-                    //self::$redis->exec();
+                    return self::$links[self::$link_name]->set($key, $value, array('nx', 'ex' => $expire));
+                    //self::$links[self::$link_name]->multi();
+                    //self::$links[self::$link_name]->setNX($key, $value);
+                    //self::$links[self::$link_name]->expire($key, $expire);
+                    //self::$links[self::$link_name]->exec();
                     //return true;
                 }
                 else
                 {
-                    return self::$redis->setnx($key, $value);
+                    return self::$links[self::$link_name]->setnx($key, $value);
                 }
             }
         }
@@ -213,8 +216,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::setnx($key, $value, $expire);
             }
@@ -241,14 +244,14 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
                 $key = "Lock:{$name}";
                 while (true)
                 {
                     // 因为 setnx 没有 expire 设置，所以还是用set
-                    //$result = self::$redis->setnx($key, $value);
-                    $result = self::$redis->set($key, $value, array('nx', 'ex' => $expire));
+                    //$result = self::$links[self::$link_name]->setnx($key, $value);
+                    $result = self::$links[self::$link_name]->set($key, $value, array('nx', 'ex' => $expire));
                     if ($result != false) 
                     {
                         return true;
@@ -265,8 +268,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 // 睡眠100毫秒
                 usleep(100000);
                 return self::lock($name, $value, $expire, $interval);
@@ -294,9 +297,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->get($key);
+                return self::$links[self::$link_name]->get($key);
             }
         }
         catch (Exception $e)
@@ -305,8 +308,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::get($key);
             }
@@ -327,9 +330,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->del($key);
+                return self::$links[self::$link_name]->del($key);
             }
         }
         catch (Exception $e)
@@ -338,8 +341,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::del($key);
             }
@@ -367,9 +370,9 @@ class cls_redis
 
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                $type = self::$redis->type($key);
+                $type = self::$links[self::$link_name]->type($key);
                 if (isset($types[$type])) 
                 {
                     return $types[$type];
@@ -382,8 +385,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::type($key);
             }
@@ -405,15 +408,15 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
                 if (empty($integer)) 
                 {
-                    return self::$redis->incr($key);
+                    return self::$links[self::$link_name]->incr($key);
                 }
                 else 
                 {
-                    return self::$redis->incrby($key, $integer);
+                    return self::$links[self::$link_name]->incrby($key, $integer);
                 }
             }
         }
@@ -423,8 +426,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::incr($key, $integer);
             }
@@ -446,15 +449,15 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
                 if (empty($integer)) 
                 {
-                    return self::$redis->decr($key);
+                    return self::$links[self::$link_name]->decr($key);
                 }
                 else 
                 {
-                    return self::$redis->decrby($key, $integer);
+                    return self::$links[self::$link_name]->decrby($key, $integer);
                 }
             }
         }
@@ -464,8 +467,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::decr($key, $integer);
             }
@@ -487,9 +490,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->append($key, $value);
+                return self::$links[self::$link_name]->append($key, $value);
             }
         }
         catch (Exception $e)
@@ -498,8 +501,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::append($key, $value);
             }
@@ -522,9 +525,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->substr($key, $start, $end);
+                return self::$links[self::$link_name]->substr($key, $start, $end);
             }
         }
         catch (Exception $e)
@@ -533,8 +536,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::substr($key, $start, $end);
             }
@@ -555,9 +558,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->select($index);
+                return self::$links[self::$link_name]->select($index);
             }
         }
         catch (Exception $e)
@@ -566,8 +569,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::select($index);
             }
@@ -588,9 +591,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->dbsize();
+                return self::$links[self::$link_name]->dbsize();
             }
         }
         catch (Exception $e)
@@ -599,8 +602,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::dbsize();
             }
@@ -620,9 +623,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->flushdb();
+                return self::$links[self::$link_name]->flushdb();
             }
         }
         catch (Exception $e)
@@ -631,8 +634,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::flushdb();
             }
@@ -652,9 +655,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->flushall();
+                return self::$links[self::$link_name]->flushall();
             }
         }
         catch (Exception $e)
@@ -663,8 +666,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::flushall();
             }
@@ -685,15 +688,15 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
                 if (!$is_bgsave) 
                 {
-                    return self::$redis->save();
+                    return self::$links[self::$link_name]->save();
                 }
                 else 
                 {
-                    return self::$redis->bgsave();
+                    return self::$links[self::$link_name]->bgsave();
                 }
             }
         }
@@ -703,8 +706,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::save($is_bgsave);
             }
@@ -724,9 +727,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->info();
+                return self::$links[self::$link_name]->info();
             }
         }
         catch (Exception $e)
@@ -735,8 +738,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::info();
             }
@@ -756,7 +759,7 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
                 if (!empty($len)) 
                 {
@@ -774,8 +777,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::slowlog($command, $len);
             }
@@ -795,9 +798,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->lastsave();
+                return self::$links[self::$link_name]->lastsave();
             }
         }
         catch (Exception $e)
@@ -806,8 +809,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::lastsave();
             }
@@ -829,9 +832,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->lpush($key, $value);
+                return self::$links[self::$link_name]->lpush($key, $value);
             }
         }
         catch (Exception $e)
@@ -840,8 +843,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::lpush($key, $value);
             }
@@ -863,9 +866,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->rpush($key, $value);
+                return self::$links[self::$link_name]->rpush($key, $value);
             }
         }
         catch (Exception $e)
@@ -874,8 +877,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::rpush($key, $value);
             }
@@ -896,9 +899,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->lpop($key);
+                return self::$links[self::$link_name]->lpop($key);
             }
         }
         catch (Exception $e)
@@ -907,8 +910,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::lpop($key);
             }
@@ -929,9 +932,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->rpop($key);
+                return self::$links[self::$link_name]->rpop($key);
             }
         }
         catch (Exception $e)
@@ -940,8 +943,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::rpop($key);
             }
@@ -962,9 +965,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->lSize($key);
+                return self::$links[self::$link_name]->lSize($key);
             }
         }
         catch (Exception $e)
@@ -973,8 +976,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::lsize($key);
             }
@@ -996,9 +999,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->lget($key, $index);
+                return self::$links[self::$link_name]->lget($key, $index);
             }
         }
         catch (Exception $e)
@@ -1007,8 +1010,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::lget($key, $index);
             }
@@ -1031,9 +1034,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->lRange($key, $start, $end);
+                return self::$links[self::$link_name]->lRange($key, $start, $end);
             }
         }
         catch (Exception $e)
@@ -1042,8 +1045,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::lrange($key, $start, $end);
             }
@@ -1107,9 +1110,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->keys($key);
+                return self::$links[self::$link_name]->keys($key);
             }
         }
         catch (Exception $e)
@@ -1118,8 +1121,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::keys($key);
             }
@@ -1142,9 +1145,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->ttl($key);
+                return self::$links[self::$link_name]->ttl($key);
             }
         }
         catch (Exception $e)
@@ -1153,8 +1156,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::ttl($key);
             }
@@ -1176,9 +1179,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->expire($key, $expire);
+                return self::$links[self::$link_name]->expire($key, $expire);
             }
         }
         catch (Exception $e)
@@ -1187,8 +1190,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::expire($key, $expire);
             }
@@ -1209,9 +1212,9 @@ class cls_redis
         self::init();
         try
         {
-            if ( self::$redis )
+            if ( self::$links[self::$link_name] )
             {
-                return self::$redis->exists($key);
+                return self::$links[self::$link_name]->exists($key);
             }
         }
         catch (Exception $e)
@@ -1220,8 +1223,8 @@ class cls_redis
             log::warn($msg);
             if ($e->getCode() == 0) 
             {
-                self::$redis->close();
-                self::$redis = null;
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
                 usleep(100000);
                 return self::exists($key);
             }
@@ -1238,11 +1241,11 @@ class cls_redis
      */
     //protected static function ping()
     //{
-        //if ( empty (self::$redis) )
+        //if ( empty (self::$links[self::$link_name]) )
         //{
             //return false;
         //}
-        //return self::$redis->ping() == '+PONG';
+        //return self::$links[self::$link_name]->ping() == '+PONG';
     //}
 
     public static function encode($value)
