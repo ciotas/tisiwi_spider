@@ -158,7 +158,7 @@ $spider->on_extract_field = function($fieldname, $data, $page){
     if($fieldname == 'item_logo'){
         $data = 'http:'.trim($data);
     }elseif ($fieldname == 'item_from'){
-        $data = 'evervc';
+        $data = '天天投';
     }elseif ($fieldname == 'item_brief'){
         $data = strip_tags($data,"");
         $data = trim($data);

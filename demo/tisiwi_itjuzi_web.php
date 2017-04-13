@@ -161,7 +161,7 @@ $spider->on_extract_field = function($fieldname, $data, $page){
     if($fieldname == 'item_brief'){
         $data = trim($data);
     }elseif ($fieldname == 'item_from'){
-        $data = 'itjuzi';
+        $data = 'IT桔子';
     }elseif ($fieldname == 'item_phone'){
         $data = '';
     }elseif ($fieldname == 'item_email'){
